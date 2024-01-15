@@ -6,16 +6,15 @@ library(skimr)
 df <- read_csv("./train.csv",
                na = c("NA"),
                col_types = cols(.default = col_character()))
-# munge ----
+# munge 
 # clean_names
 df <- df |>
     clean_names() 
-
+# string_to_lower
 df <- df |>
-    # string_to_lower
     mutate(across(where(is.character), str_to_lower)) 
+# as.numeric
 df <- df |> 
-    # as.numeric
     mutate(across(c(lot_frontage, lot_area, mas_vnr_area, bsmt_fin_sf1,
                     bsmt_fin_sf2, bsmt_unf_sf, total_bsmt_sf, x1st_flr_sf,
                     x2nd_flr_sf, low_qual_fin_sf, gr_liv_area, garage_area, 
@@ -27,6 +26,7 @@ df <- df |>
     mutate(across(c(alley, pool_qc, fence), 
                   ~ replace_na(., "none"))) 
 # # lot_frontage ----
+# replace na with the mean value based on lot_shape (due too highest correlation)
 df <- df |> 
     mutate(lot_shape = as_factor(lot_shape)) |> 
     mutate(impute_lot_frontage = case_when(lot_shape == "ir1" ~ 76.1,
