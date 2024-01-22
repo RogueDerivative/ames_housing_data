@@ -1,0 +1,120 @@
+# has_garage_strata -------------------------------------------------------
+
+blog_page <- "https://juliasilge.com/blog/intro-tidymodels/"
+# df taken from train_data thru ames_eda munge
+raw_df <- read_csv('./mutated_df.csv')
+# raw_df <- df
+df <- raw_df
+df <- df |> 
+    select(sale_price,
+           lot_area,
+           neighborhood,
+           has_garage,
+           total_bsmt_sf,
+           land_contour,
+           has_remod,
+           lot_frontage,
+           mas_vnr_area,
+           mas_vnr_type,
+           has_remod,
+           garage_area,
+           x1st_flr_sf,
+           gr_liv_area,
+           has_deck,
+           has_pool,
+           garage_str,
+           garage_cars
+           ) |> 
+    mutate(across(c(sale_price, lot_frontage, lot_area, x1st_flr_sf, gr_liv_area), ~ log(.))) |> 
+    mutate(across(where(is.character), as.factor))
+
+# split
+set.seed(421)
+ames_split <- df |> 
+    initial_split(strata = has_garage)
+ames_train <- training(ames_split)
+ames_test <- testing(ames_split)
+# specify lm model
+lm_spec <- linear_reg() |> 
+    set_engine(engine = "lm")
+# fit the lm model
+lm_fit <- lm_spec |> 
+    fit(sale_price ~ .,
+        data = ames_train)
+# specify the rand_forest model
+rf_spec <- rand_forest(mode = "regression") |> 
+    set_engine("ranger")
+# fit rand_forest model
+rf_fit <- rf_spec |> 
+    fit(sale_price ~ .,
+        data = ames_train)
+# evaluate models
+results_train <- lm_fit |> 
+    predict(new_data = ames_train) |> 
+    mutate(
+        truth = ames_train$sale_price,
+        model = "lm") |> 
+    bind_rows(rf_fit |> 
+                  predict(new_data = ames_train) |> 
+                  mutate(
+                      truth = ames_train$sale_price,
+                      model = "rf"))
+
+results_test <- lm_fit |> 
+    predict(new_data = ames_test) |> 
+    mutate(
+        truth = ames_test$sale_price,
+        model = "lm") |> 
+    bind_rows(
+        rf_fit |> 
+            predict(new_data = ames_test) |> 
+            mutate(truth = ames_test$sale_price,
+                   model = "rf"))
+
+results_train |> 
+    group_by(model) |> 
+    rmse(truth = truth, estimate = .pred)
+
+results_test |> 
+    group_by(model) |> 
+    rmse(truth = truth, estimate = .pred)
+# overfit data set
+
+results_test %>%
+    mutate(train = "testing") %>%
+    bind_rows(results_train %>%
+                  mutate(train = "training")) %>%
+    ggplot(aes(truth, .pred, color = model)) +
+    geom_abline(lty = 2, color = "gray80", linewidth = 1.5) +
+    geom_point(alpha = 0.5) +
+    facet_wrap(~train) +
+    labs(
+        x = "Truth",
+        y = "Predicted Sale Price",
+        color = "Type of model"
+    )
+
+# resample 
+set.seed(1234)
+ames_folds <- vfold_cv(ames_train,
+                       strata = has_garage)
+rf_res <- fit_resamples(
+    rf_spec,
+    sale_price ~ .,
+    ames_folds,
+    control = control_resamples(save_pred = TRUE))
+
+rf_res |> 
+    collect_metrics()
+# r-squared = 68.0% 
+rf_res %>%
+    unnest(.predictions) %>%
+    ggplot(aes(sale_price, .pred, color = id)) +
+    geom_abline(lty = 2, color = "gray80", size = 1.5) +
+    geom_point(alpha = 0.5) +
+    labs(
+        x = "Truth",
+        y = "Predicted sale price",
+        color = NULL
+    )
+
